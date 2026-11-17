@@ -1,0 +1,27 @@
+# Never commit signing material, credentials, signed packages or device logs.
+*.p12
+*.pfx
+*.pem
+*.key
+*.crt
+*.cer
+*.keystore
+*.jks
+author-signature.xml
+signature*.xml
+profiles.xml
+security-profiles.xml
+.env
+.env.*
+!.env.example
+certificates/
+.credentials/
+*.wgt
+*.log
+.buildResult/
+.sign/
+.settings/
+node_modules/
+dist/
+test-results/
+.DS_Store

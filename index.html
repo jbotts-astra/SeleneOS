@@ -1,10 +1,203 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SELENE OS</title><link rel="stylesheet" href="style.css"></head><body>
-<div id="splash"><div class="splash-credit">SELENE OS<br><small>CODED BY JON BOTTIGLIERI</small></div></div>
-<main id="main">
-<header><div class="brand">☾ SELENE <b>OS</b></div><div id="ticker" aria-label="Boston sports ticker">BOSTON SPORTS · PATRIOTS · CELTICS · BRUINS · RED SOX <span>Live scores: integration pending</span></div><div id="gear">⚙</div></header>
-<section class="widgets"><div class="panel"><div class="eyebrow">LOCAL TIME</div><div class="clock" id="clock">--:--</div><div id="date"></div></div><div class="panel"><div class="eyebrow">WEATHER · LIMERICK, ME</div><div class="widget-main">☁ <span>Weather setup pending</span></div><div class="muted">No forecast data connected yet</div></div><div class="panel"><div class="eyebrow">NEW ENGLAND PATRIOTS</div><div class="widget-main">🏈 <span>Next game</span></div><div class="muted">Schedule feed coming soon</div></div></section>
-<div class="section-heading"><span>YOUR APPS</span><span id="counter"></span></div>
-<section id="apps" class="apps" aria-label="Applications"></section><div class="hint">◀ ▶ Select &nbsp; ↓ More apps &nbsp; OK Launch &nbsp; Back Settings</div>
-</main>
-<div id="settings" class="overlay hidden"><div class="settings-card"><h1>⚙ SELENE SETTINGS</h1><p>Press OK to toggle the selected option. Back closes settings.</p><div class="setting active" id="fast">Fast startup <span id="fast-value">OFF</span></div><div class="setting" id="motion">Tile wiggle <span id="motion-value">ON</span></div><div class="setting" id="close">Close settings <span>↩</span></div><p class="note">SELENE OS is a custom app, not a firmware replacement. Samsung's Home overlay may still appear.</p></div></div>
-<script src="main.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://api.open-meteo.com https://site.api.espn.com; object-src 'none'; base-uri 'none'"
+    />
+    <meta name="theme-color" content="#09070f" />
+    <title>SELENE OS</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main id="stage">
+      <div class="lunar-halo" aria-hidden="true"></div>
+      <header class="topbar">
+        <div class="brand">
+          <span class="crescent" aria-hidden="true"></span>SELENE<span
+            class="brand-os"
+            >OS</span
+          >
+        </div>
+        <div class="home-label">Home<span></span></div>
+        <div class="header-right">
+          <span id="greeting">YOUR EVENING, ELEVATED.</span
+          ><span class="header-divider"></span
+          ><span class="connection-dot" id="connection-dot"></span
+          ><span id="connection-label">Connecting</span
+          ><button
+            id="gear"
+            class="gear"
+            aria-label="Open settings"
+            tabindex="-1"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"
+              />
+              <circle cx="12" cy="12" r="3.5" />
+            </svg>
+          </button>
+        </div>
+      </header>
+      <section class="dashboard" aria-label="At a glance">
+        <article class="clock-panel">
+          <div class="eyebrow">MAKE YOURSELF AT HOME</div>
+          <div class="clock-line">
+            <time id="clock">--:--</time><span id="period"></span>
+          </div>
+          <div id="date" class="date">Limerick, Maine</div>
+          <div class="local-label">
+            <span></span> LIMERICK, MAINE <span class="zone">ET</span>
+          </div>
+        </article>
+        <article class="weather-panel">
+          <div class="eyebrow">
+            OUTSIDE, RIGHT NOW <span class="mini-label">LIMERICK</span>
+          </div>
+          <div class="weather-main">
+            <span id="weather-icon" class="weather-icon" aria-hidden="true"
+              >☁</span
+            ><span id="temperature">—</span><span class="degrees">°F</span>
+          </div>
+          <div class="weather-description" id="weather-description">
+            Connecting to the weather
+          </div>
+          <div class="weather-range" id="weather-range">
+            Your forecast will appear here
+          </div>
+          <div class="source-line" id="weather-source">
+            Open-Meteo · Awaiting update
+          </div>
+        </article>
+        <article class="game-panel">
+          <div class="eyebrow">
+            <span class="team-accent"></span> NEW ENGLAND PATRIOTS
+            <span class="mini-label" id="game-badge">NEXT UP</span>
+          </div>
+          <div class="matchup">
+            <div class="team-mark" aria-hidden="true">
+              <span>NE</span><i></i>
+            </div>
+            <div class="matchup-text">
+              <div class="game-kicker" id="game-kicker">
+                GILLETTE. AWAY. ANYWHERE.
+              </div>
+              <div id="game-title">Patriots football</div>
+              <div id="game-time">Finding the next kickoff</div>
+            </div>
+          </div>
+          <div class="game-footer">
+            <span id="game-detail">Schedule updates automatically</span
+            ><span class="source-line" id="sports-source">ESPN</span>
+          </div>
+        </article>
+      </section>
+      <section class="library" aria-label="Your applications">
+        <div class="section-heading">
+          <div>
+            <span class="section-index">01 /</span>
+            <h1>Your apps</h1>
+            <span class="section-note">A little escape. One click away.</span>
+          </div>
+          <span id="counter">01 / 19</span>
+        </div>
+        <div id="apps-viewport">
+          <div
+            id="apps"
+            role="grid"
+            aria-label="Applications, five per row"
+          ></div>
+        </div>
+        <div class="library-bottom">
+          <div class="remote-hint">
+            <span class="keycap">↔ ↕</span> Navigate
+            <span class="keycap ok">OK</span> Launch
+            <span class="keycap back">↶</span> Settings
+          </div>
+          <div id="pages" class="pages" aria-label="App rows"></div>
+          <span class="version">SELENE OS <b>0.3</b></span>
+        </div>
+      </section>
+      <footer class="sports-bar">
+        <div class="sports-brand">
+          <span class="sports-slash">/</span> BOSTON <b>SPORTS</b
+          ><span class="ticker-dot"></span>
+        </div>
+        <div class="ticker-viewport">
+          <div id="ticker-track">
+            <div id="ticker" class="ticker-group">
+              Patriots · Celtics · Bruins · Red Sox — Connecting to ESPN
+            </div>
+            <div id="ticker-copy" class="ticker-group" aria-hidden="true"></div>
+          </div>
+        </div>
+        <span id="ticker-status">CONNECTING</span>
+      </footer>
+      <div
+        id="settings"
+        class="overlay hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+      >
+        <div class="settings-card">
+          <div class="eyebrow">MAKE IT YOURS <span>SELENE / 0.3</span></div>
+          <h2 id="settings-title">The quiet details.</h2>
+          <p class="settings-intro">
+            A few small things. Just the way you like them.
+          </p>
+          <button class="setting" id="fast" tabindex="-1">
+            <span>Fast startup<small>Skip the welcome screen</small></span
+            ><span id="fast-value" class="toggle-value"></span>
+          </button>
+          <button class="setting" id="motion" tabindex="-1">
+            <span
+              >Ambient motion<small
+                >Gentle tile movement and scrolling scores</small
+              ></span
+            ><span id="motion-value" class="toggle-value"></span>
+          </button>
+          <button class="setting" id="refresh" tabindex="-1">
+            <span
+              >Refresh live data<small
+                >Weather and your four Boston teams</small
+              ></span
+            ><span class="setting-arrow">↻</span>
+          </button>
+          <button class="setting" id="close" tabindex="-1">
+            <span>Back to your evening</span
+            ><span class="setting-arrow">↶</span>
+          </button>
+          <div class="settings-bottom">
+            <span
+              >↑ ↓ Select &nbsp; · &nbsp; OK Change &nbsp; · &nbsp; Back
+              Close</span
+            >
+            <p>
+              Weather: Open-Meteo (CC BY 4.0). Sports: ESPN.<br />SELENE is a
+              launcher app. Samsung Home remains available.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div
+        id="toast"
+        role="status"
+        aria-live="polite"
+        class="toast hidden"
+      ></div>
+      <div id="splash" aria-hidden="true">
+        <div class="splash-logo">
+          <span class="crescent"></span><span>SELENE <b>OS</b></span
+          ><small>YOUR SPACE. AFTER DARK.</small>
+        </div>
+      </div>
+    </main>
+    <script src="apps.js"></script>
+    <script src="data.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>
