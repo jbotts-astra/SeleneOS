@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:widget xmlns:ns0="http://www.w3.org/ns/widgets" xmlns:ns1="http://tizen.org/ns/widgets" id="https://seleneos.local/launcher" version="0.1.0" viewmodes="maximized">
+  <ns1:application id="SeleneOS01.SeleneOS" package="SeleneOS01" required_version="5.0" />
+  <ns0:name>SELENE OS</ns0:name>
+  <ns0:content src="index.html" />
+  <ns0:icon src="icon.png" />
+  <ns1:profile name="tv" />
+  <ns1:privilege name="http://tizen.org/privilege/application.launch" />
+  <ns1:privilege name="http://tizen.org/privilege/application.info" />
+  <ns1:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable" />
+</ns0:widget>
