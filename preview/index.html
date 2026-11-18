@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SELENE OS — Preview</title>
+<style>
+  :root{
+    --void:#070503; --surface:#171109; --surface-raised:#241B0E;
+    --accent:#D4AF6A; --accent-bright:#F4D98C;
+    --live:#D64545; --text:#F7F1E3; --text-dim:#B9AD91;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; height:100%; background:var(--void); color:var(--text);
+    font-family:"Inter","Segoe UI",system-ui,sans-serif; overflow:hidden;
+  }
+
+  /* Fixed 1920x1080 stage, scaled to fit the preview window. */
+  .stage{position:fixed; left:50%; top:50%; width:1920px; height:1080px;
+    transform-origin:center; translate:-50% -50%; overflow:hidden;}
+
+  /* --- Layer 1: persistent background, always present --- */
+  .bg{position:absolute; inset:0; z-index:0;
+    background:var(--void) url('assets/bg/background.jpg') center / cover no-repeat;}
+  .vignette{position:absolute; inset:0; z-index:1; pointer-events:none;
+    background:radial-gradient(circle at 50% 45%, transparent 45%, rgba(0,0,0,0.55) 100%);}
+
+  /* --- Layer 2: splash, sits above the OS until it fades out --- */
+  .splash{position:absolute; inset:0; z-index:5;
+    background:var(--void) url('assets/splash/boot.jpg') center 30% / cover no-repeat;
+    transition:opacity 1.2s ease; opacity:1;}
+  .splash.hidden{opacity:0; pointer-events:none;}
+
+  /* --- OS layer --- */
+  .os{position:absolute; inset:0; z-index:3; padding:64px;
+    display:flex; flex-direction:column; gap:40px;}
+  .os.hidden{visibility:hidden;}
+
+  .feed{display:flex; gap:20px;}
+  .chip{flex:1; display:flex; align-items:center; gap:16px;
+    background:linear-gradient(160deg, rgba(36,27,14,.92), rgba(23,17,9,.92));
+    border:1px solid rgba(212,175,106,0.18); border-radius:20px; padding:20px 22px;}
+  .chip-content{display:flex; align-items:center; gap:16px; transition:opacity .35s ease;}
+  .chip-content.out{opacity:0;}
+  .badge{width:56px; height:56px; border-radius:14px; flex-shrink:0; display:flex;
+    align-items:center; justify-content:center; font-family:"Sora",sans-serif;
+    font-weight:700; font-size:18px; color:#fff; position:relative; overflow:hidden;}
+  .badge img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:none;}
+  .chip-info{display:flex; flex-direction:column; gap:2px; min-width:0;}
+  .chip-team{font-family:"Sora",sans-serif; font-size:20px; font-weight:600;}
+  .chip-score{font-family:"Sora",sans-serif; font-size:26px; font-weight:600;}
+  .chip-status{font-size:13px; font-weight:700; letter-spacing:1px;}
+  .chip-status.live{color:var(--live);}
+  .chip-status.final{color:var(--text-dim);}
+
+  .top-row{display:flex; justify-content:space-between; align-items:flex-start;}
+  .clock{font-family:"Sora","Inter",sans-serif; font-weight:600; font-size:92px; letter-spacing:-2px;
+    text-shadow:0 2px 24px rgba(0,0,0,.6);}
+  .date{color:var(--text-dim); font-size:28px; margin-top:4px; text-shadow:0 2px 16px rgba(0,0,0,.6);}
+  .weather{text-align:right; font-size:32px; color:var(--text-dim); text-shadow:0 2px 16px rgba(0,0,0,.6);}
+  .weather strong{display:block; color:var(--text); font-size:50px; font-weight:600;
+    font-family:"Sora","Inter",sans-serif;}
+
+  .tiles{margin-top:auto; display:flex; flex-wrap:wrap; gap:40px; perspective:1000px;}
+  .tile-wrap{position:relative; transition:opacity .25s ease, filter .25s ease;}
+  .tile-wrap.dim{opacity:.5; filter:blur(1.5px);}
+  .tile{position:relative; overflow:hidden; width:280px; height:280px; border-radius:22px;
+    background:linear-gradient(160deg, var(--surface-raised), var(--surface));
+    border:1px solid rgba(212,175,106,0.18);
+    display:flex; flex-direction:column; justify-content:flex-end; gap:10px;
+    padding:24px; font-size:26px; font-weight:500;
+    transition:transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease;}
+  .tile-icon{width:48px; height:48px; border-radius:12px; object-fit:cover;}
+  .tile:focus-visible{outline:none;
+    transform:perspective(900px) rotateX(7deg) scale(1.22) translateY(-24px);
+    box-shadow:0 34px 60px rgba(0,0,0,.6), 0 0 44px rgba(212,175,106,.55);}
+  .tile-glow{position:absolute; inset:-34px; border-radius:40px; opacity:0;
+    background:var(--accent); filter:blur(30px); transition:opacity .3s ease; z-index:-1;}
+
+  .preview-tools{position:fixed; right:12px; bottom:12px; z-index:10; display:flex; gap:8px;}
+  .preview-tools button{background:rgba(0,0,0,.6); color:var(--text); border:1px solid rgba(212,175,106,.4);
+    border-radius:8px; padding:6px 10px; font-size:12px; font-family:monospace; cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="bg"></div>
+  <div class="vignette"></div>
+
+  <div class="splash" id="splash"></div>
+
+  <div class="os hidden" id="os">
+    <div class="feed" id="feed"></div>
+    <div class="top-row">
+      <div>
+        <div class="clock" id="clock">9:41</div>
+        <div class="date" id="date"></div>
+      </div>
+      <div class="weather"><strong>52°</strong>Partly Cloudy</div>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </div>
+</div>
+
+<div class="preview-tools">
+  <button id="replay">Replay splash</button>
+</div>
+
+<script>
+  // Scale the 1920x1080 stage to the window.
+  function fit(){
+    const s = Math.min(window.innerWidth/1920, window.innerHeight/1080);
+    document.getElementById('stage').style.transform = 'scale(' + s + ')';
+  }
+  fit(); window.addEventListener('resize', fit);
+
+  // --- Startup sequence: preload both images, hold splash, fade to OS ---
+  const SPLASH_HOLD_MS = 2000;
+  const FADE_MS = 1200;
+
+  function preload(src){
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = img.onerror = resolve;
+      img.src = src;
+    });
+  }
+
+  function runStartup(){
+    const splash = document.getElementById('splash');
+    const os = document.getElementById('os');
+    splash.classList.remove('hidden');
+    os.classList.add('hidden');
+    // Only remove splash once the OS layer is ready to show.
+    setTimeout(() => {
+      os.classList.remove('hidden');
+      splash.classList.add('hidden');
+    }, SPLASH_HOLD_MS);
+  }
+
+  Promise.all([
+    preload('assets/splash/boot.jpg'),
+    preload('assets/bg/background.jpg')
+  ]).then(runStartup);
+
+  document.getElementById('replay').addEventListener('click', runStartup);
+
+  // --- Clock ---
+  function tick(){
+    const d = new Date();
+    document.getElementById('clock').textContent = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+    document.getElementById('date').textContent = d.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
+  }
+  tick(); setInterval(tick, 1000);
+
+  // --- App tiles: real list on TV, demo fallback in browser ---
+  const FALLBACK_APPS = [
+    {name:'Netflix', color:'#E50914'},
+    {name:'YouTube TV', color:'#FF0000'},
+    {name:'Prime Video', color:'#00A8E1'},
+    {name:'Disney+', color:'#113CCF'},
+    {name:'Hulu', color:'#1CE783'},
+    {name:'Max', color:'#5B2EA6'},
+    {name:'Peacock', color:'#2C2C2C'},
+    {name:'ESPN', color:'#A3AAAE'}
+  ];
+
+  function loadApps(callback){
+    if (window.tizen && tizen.application && tizen.application.getAppsInfo) {
+      tizen.application.getAppsInfo(
+        apps => callback(apps.filter(a => a.show !== false).map(a => ({name:a.name, icon:a.iconPath}))),
+        () => callback(FALLBACK_APPS)
+      );
+    } else {
+      callback(FALLBACK_APPS);
+    }
+  }
+
+  function renderTiles(apps){
+    const container = document.getElementById('tiles');
+    container.innerHTML = '';
+    apps.forEach(app => {
+      const wrap = document.createElement('div');
+      wrap.className = 'tile-wrap';
+      const iconHtml = app.icon
+        ? `<img class="tile-icon" src="${app.icon}" alt="">`
+        : `<div class="tile-icon" style="background:${app.color || '#555'}"></div>`;
+      wrap.innerHTML = `<div class="tile-glow"></div><div class="tile" tabindex="0">${iconHtml}${app.name}</div>`;
+      container.appendChild(wrap);
+
+      const tile = wrap.querySelector('.tile');
+      tile.addEventListener('focus', () => {
+        document.querySelectorAll('.tile-wrap').forEach(w => w.classList.toggle('dim', w !== wrap));
+        wrap.querySelector('.tile-glow').style.opacity = '.7';
+      });
+      tile.addEventListener('blur', () => {
+        document.querySelectorAll('.tile-wrap').forEach(w => w.classList.remove('dim'));
+        wrap.querySelector('.tile-glow').style.opacity = '0';
+      });
+    });
+  }
+  loadApps(renderTiles);
+
+  // --- Score feed (still hardcoded; live data is a later phase) ---
+  const teams = [
+    {abbr:'NE',  team:'Patriots', grad:['#002244','#C60C30'], live:false, last:{score:'24–17', note:'Final · Sun'}},
+    {abbr:'BOS', team:'Celtics',  grad:['#007A33','#BA9653'], live:true,  current:{score:'102–98', note:'Q3 · 4:40'}},
+    {abbr:'BOS', team:'Bruins',   grad:['#FFB81C','#000000'], live:true,  current:{score:'3–2', note:'2nd · 8:12'}},
+    {abbr:'BOS', team:'Red Sox',  grad:['#BD3039','#0C2340'], live:false, last:{score:'5–4', note:'Final · Oct 2'}}
+  ];
+
+  const feed = document.getElementById('feed');
+  teams.forEach((t, idx) => {
+    const data = t.live ? t.current : t.last;
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `
+      <div class="chip-content" id="chip-${idx}">
+        <div class="badge" style="background:linear-gradient(145deg, ${t.grad[0]}, ${t.grad[1]})"><img src="assets/logos/${t.team.toLowerCase().replace(' ', '')}.png" alt="" onload="this.style.display='block';this.nextElementSibling.style.display='none'"><span>${t.abbr}</span></div>
+        <div class="chip-info">
+          <div class="chip-team">${t.team}</div>
+          <div class="chip-score">${data.score}</div>
+          <div class="chip-status ${t.live ? 'live' : 'final'}">${t.live ? 'LIVE · ' + data.note : data.note}</div>
+        </div>
+      </div>`;
+    feed.appendChild(chip);
+  });
+</script>
+</body>
+</html>
