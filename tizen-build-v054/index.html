@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SELENE OS</title>
+<style>
+  :root{
+    --void:#070503; --surface:#171109; --surface-raised:#241B0E;
+    --accent:#D4AF6A; --accent-bright:#F4D98C;
+    --live:#D64545; --win:#4CD27A; --loss:#FF5C5C;
+    --text:#F7F1E3; --text-dim:#B9AD91;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; height:100%; background:var(--void); color:var(--text);
+    font-family:"Inter","Segoe UI",system-ui,sans-serif; overflow:hidden;}
+
+  /* 1920x1080 stage, centered with margins and scaled by fit() in JS.
+     Avoids the inset and translate properties and flex gap (old TV browser). */
+  .stage{position:fixed; left:50%; top:50%; width:1920px; height:1080px;
+    margin-left:-960px; margin-top:-540px; transform-origin:center center; overflow:hidden;}
+
+  /* Everything is drawn once, hidden under the splash, so nothing animates in. */
+  .bg, .os, .carousel{visibility:hidden;}
+  .warm .bg, .warm .os, .warm .carousel{visibility:visible;}
+
+  .bg{position:absolute; top:0; right:0; bottom:0; left:0; z-index:0;
+    background:var(--void) url('assets/bg/background.jpg') center / cover no-repeat;}
+
+  .splash{position:absolute; top:0; right:0; bottom:0; left:0; z-index:30; opacity:0; pointer-events:none;
+    background:var(--void) url('assets/splash/boot.jpg') center 30% / cover no-repeat;}
+  .splash.on{opacity:1;}
+
+  /* ---------- Top: score strip, clock, weather ---------- */
+  .os{position:absolute; top:0; right:0; left:0; z-index:3; padding:56px 64px;}
+
+  .feed{display:flex; border-radius:26px;
+    background:linear-gradient(180deg, rgba(24,17,9,.78), rgba(10,7,4,.66));
+    border:1px solid rgba(212,175,106,.30);
+    box-shadow:0 14px 44px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,236,190,.16);}
+  .chip{flex:1; display:flex; align-items:center; padding:20px 26px; min-width:0;}
+  .chip + .chip{border-left:1px solid rgba(212,175,106,.20);}
+  .logo{position:relative; width:72px; height:72px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    font-family:"Sora",sans-serif; font-weight:700; font-size:22px; color:var(--accent);}
+  .logo img{position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; display:none;}
+  .info{display:flex; flex-direction:column; margin-left:18px; min-width:0; flex:1;}
+  .info > * + *{margin-top:3px;}
+  .tname{font-size:17px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--text-dim); white-space:nowrap;}
+  .tname em{font-style:normal; color:rgba(185,173,145,.6); letter-spacing:1px; margin-left:8px;}
+  .score{font-family:"Sora","Inter",sans-serif; font-size:36px; font-weight:700; line-height:1.15;}
+  .score .hi{color:var(--text);}
+  .score .lo{color:rgba(247,241,227,.45); font-weight:500;}
+  .score i{font-style:normal; color:rgba(212,175,106,.7); margin:0 10px; font-weight:400;}
+  .status{font-size:14px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; white-space:nowrap;}
+  .status.live{color:var(--live);}
+  .status.final{color:var(--text-dim);}
+  .dot{display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--live); margin-right:8px;
+    animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.25;}}
+  .res{margin-left:12px; font-family:"Sora","Inter",sans-serif; font-size:46px; font-weight:800; width:44px; text-align:center;}
+  .res.w{color:var(--win);}
+  .res.l{color:var(--loss);}
+
+  .top-row{display:flex; justify-content:space-between; align-items:flex-start; margin-top:32px;}
+  .clock{font-family:"Sora","Inter",sans-serif; font-weight:600; font-size:76px; letter-spacing:-2px;
+    text-shadow:0 2px 24px rgba(0,0,0,.6);}
+  .date{color:var(--text-dim); font-size:25px; margin-top:2px; text-shadow:0 2px 16px rgba(0,0,0,.6);}
+  .weather{text-align:right; font-size:29px; color:var(--text-dim); text-shadow:0 2px 16px rgba(0,0,0,.6);}
+  .weather strong{display:block; color:var(--text); font-size:46px; font-weight:600;
+    font-family:"Sora","Inter",sans-serif;}
+
+  /* ---------- App carousel: one row, selected app in the middle ---------- */
+  .carousel{position:absolute; left:0; top:600px; width:1920px; height:315px; z-index:4;}
+  .card{position:absolute; left:680px; top:0; width:560px; height:315px;
+    transition:transform .32s cubic-bezier(.2,.8,.2,1), opacity .32s; will-change:transform, opacity;}
+  .noglow .glow{display:none;}
+  .glow{position:absolute; top:-70px; right:-70px; bottom:-70px; left:-70px; opacity:0;
+    background:radial-gradient(closest-side, var(--glow, #D4AF6A) 62%, transparent 100%);
+    transition:opacity .2s ease;}
+  .card.sel .glow{opacity:.75;}
+  .art{position:absolute; top:0; right:0; bottom:0; left:0; border-radius:30px;}
+  img.art{width:100%; height:100%; display:block;}
+  .art.plain{display:flex; align-items:center; justify-content:center;}
+  .art.plain img{width:210px; height:210px; border-radius:42px;}
+  .art.plain .letter{width:210px; height:210px; border-radius:42px; display:flex; align-items:center; justify-content:center;
+    font-size:100px; font-weight:700; color:#fff; background:rgba(255,255,255,.14);}
+  .art.edit{display:flex; align-items:center; justify-content:center; font-size:38px; font-weight:600; color:var(--accent-bright);
+    background:linear-gradient(160deg, var(--surface-raised), var(--surface)); border:2px solid rgba(212,175,106,.35);}
+  .dim{display:none; position:absolute; top:0; right:0; bottom:0; left:0; border-radius:30px; background:#000; opacity:0; pointer-events:none;}
+  .edge{position:absolute; top:0; right:0; bottom:0; left:0; border-radius:30px; opacity:0;
+    border:2px solid rgba(255,246,224,.5);}
+  .card.sel .edge{opacity:1;}
+  .badge{position:absolute; right:22px; bottom:20px; background:#fff; color:#d00; font-weight:800; font-size:34px;
+    border-radius:12px; padding:2px 14px;}
+  .label{position:absolute; left:0; width:1920px; top:348px; text-align:center; font-size:36px; font-weight:600;
+    letter-spacing:.5px; text-shadow:0 2px 18px rgba(0,0,0,.8);}
+
+  /* ---------- Menus ---------- */
+  .menu, .panel{position:absolute; z-index:20; display:none; background:rgba(14,10,6,.94);
+    border:1px solid rgba(212,175,106,.4); border-radius:24px; box-shadow:0 24px 70px rgba(0,0,0,.65); padding:22px;}
+  .menu{left:760px; top:360px; width:400px;}
+  .panel{left:560px; top:200px; width:800px;}
+  .menu.open, .panel.open{display:block;}
+  .m-title{font-size:24px; color:var(--text-dim); margin-bottom:14px; text-align:center;}
+  .m-row{height:62px; line-height:62px; font-size:30px; border-radius:14px; padding:0 22px; margin-top:8px;}
+  .m-row.sel{background:rgba(212,175,106,.22); color:var(--accent-bright);}
+  .m-note{font-size:22px; color:var(--text-dim); text-align:center; margin-top:14px;}
+  .hint{position:absolute; left:0; width:1920px; bottom:26px; text-align:center; font-size:24px; color:var(--accent-bright);
+    z-index:12; display:none; text-shadow:0 2px 14px rgba(0,0,0,.8);}
+  .hint.show{display:block;}
+
+  .toast{position:absolute; left:50%; bottom:20px; margin-left:-300px; width:600px; text-align:center; z-index:25;
+    background:rgba(0,0,0,.85); border:1px solid rgba(212,175,106,.4); border-radius:12px;
+    padding:14px 22px; font-size:22px; opacity:0; transition:opacity .3s ease; pointer-events:none;}
+  .toast.show{opacity:1;}
+
+  /* Speed test switches (used only by the benchmark) */
+  .b-ns img.art, .b-ns .art.plain, .b-ns .art.plain img{box-shadow:none !important;}
+  .b-nd .dim{display:none;}
+  .b-lay .card{will-change:transform;}
+  .b-nobg .bg{display:none;}
+  .b-notop .os{display:none;}
+  .b-inst .card{transition:none !important;}
+  .bench{position:absolute; left:260px; top:110px; width:1400px; z-index:45; display:none; background:rgba(0,0,0,.94); color:#cfe;
+    font:23px/1.5 monospace; padding:22px 28px; border-radius:14px; white-space:pre-wrap;}
+  .bench.show{display:block;}
+
+  /* Hidden diagnostics: Settings tile. */
+  .dbg{position:absolute; left:20px; bottom:20px; z-index:40; display:none; background:rgba(0,0,0,.8); color:#9f9;
+    font:20px/1.35 monospace; padding:10px 14px; border-radius:8px; white-space:pre;}
+  .dbg.show{display:block;}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="bg"></div>
+
+  <div class="os" id="os">
+    <div class="feed" id="feed"></div>
+    <div class="top-row">
+      <div>
+        <div class="clock" id="clock">--:--</div>
+        <div class="date" id="date"></div>
+      </div>
+      <div class="weather"><strong id="wtemp">--°</strong><span id="wdesc">Loading</span></div>
+    </div>
+  </div>
+
+  <div class="carousel" id="carousel">
+    <div class="label" id="label"></div>
+  </div>
+
+  <div class="menu" id="menu"></div>
+  <div class="panel" id="panel"></div>
+  <div class="hint" id="hint"></div>
+  <div class="toast" id="toast"></div>
+  <div class="dbg" id="dbg"></div>
+  <div class="bench" id="bench"></div>
+  <div class="splash" id="splash"></div>
+</div>
+
+<script>
+(function(){
+  var VERSION = 'v0.5.4';
+  var SELF_ID = 'SeleneOS01.SeleneOS';
+  var HOLD_MS = 600;
+  var SPLASH_HOLD_MS = 6000;
+  var EDIT_TILE = {id:'__edit__', name:'Edit apps', color:'#D4AF6A', edit:true};
+  var SETTINGS_TILE = {id:'__settings__', name:'Settings', color:'#D4AF6A', edit:true, kind:'settings'};
+  var GEAR = (function(){
+    var t = '';
+    for (var i = 0; i < 8; i++) t += '<rect x="-15" y="-86" width="30" height="38" rx="7" transform="rotate(' + (i * 45) + ')"/>';
+    return '<svg width="190" height="190" viewBox="-100 -100 200 200"><g fill="#F4D98C"><circle r="58"/>' + t + '</g><circle r="25" fill="#1c150b"/></svg>';
+  })();
+  var LAT = 43.69, LON = -70.79;      // Limerick, Maine
+
+  function $(id){ return document.getElementById(id); }
+
+  // ---------- Saved choices ----------
+  var mem = {};
+  var store = {
+    get: function(k){
+      try { var v = window.localStorage.getItem('selene-' + k); return v === null ? null : JSON.parse(v); }
+      catch (e) { return mem.hasOwnProperty(k) ? mem[k] : null; }
+    },
+    set: function(k, v){
+      mem[k] = v;
+      try { window.localStorage.setItem('selene-' + k, JSON.stringify(v)); } catch (e) {}
+    },
+    remove: function(k){
+      delete mem[k];
+      try { window.localStorage.removeItem('selene-' + k); } catch (e) {}
+    }
+  };
+
+  // ---------- Known apps ----------
+  var KNOWN = [
+    {re:/^youtube tv/i,     label:'YouTube TV',  color:'#ff4040', pack:'youtube',   badge:'TV', rank:11},
+    {re:/^youtube$/i,       label:'YouTube',     color:'#ff3434', pack:'youtube',   rank:1},
+    {re:/^netflix/i,        label:'Netflix',     color:'#ed3434', pack:'netflix',   rank:2},
+    {re:/^prime video/i,    label:'Prime Video', color:'#4bc9ff', pack:'prime',     rank:3},
+    {re:/^disney/i,         label:'Disney+',     color:'#58adff', pack:'disney',    rank:4},
+    {re:/^paramount/i,      label:'Paramount+',  color:'#37a5ff', pack:'paramount', rank:5},
+    {re:/^hulu/i,           label:'Hulu',        color:'#1ce783', pack:'hulu',      rank:6},
+    {re:/^peacock/i,        label:'Peacock',     color:'#ffcc42', pack:'peacock',   rank:7},
+    {re:/^twitch/i,         label:'Twitch',      color:'#a970ff', pack:'twitch',    rank:8},
+    {re:/^fox one/i,        label:'FOX One',     color:'#ff4d5a', pack:'foxone',    rank:9},
+    {re:/^tubi/i,           label:'Tubi',        color:'#ffdf38', pack:'tubi',      rank:10},
+    {re:/^(browser|internet)$/i, label:'Browser', color:'#9dc4e8', pack:'browser',  rank:12},
+    {re:/^instagram/i,      label:'Instagram',   color:'#e96fba', pack:'instagram', rank:13},
+    {re:/^xbox/i,           label:'Xbox',        color:'#6ee65c', rank:14},
+    {re:/^e-?manual/i,      label:'e-Manual',    color:'#80a9dd', rank:90},
+    {re:/^samsung promotion/i, label:'Samsung Promotion', color:'#9babc8', rank:91},
+    {re:/^security center/i, label:'Security Center', color:'#79b9ff', rank:92},
+    {re:/^glance/i,         label:'Glance',      color:'#d6d6ee', rank:93}
+  ];
+  var DEFAULT_HIDE = /^(xbox|glance|e-?manual|samsung promotion|security center)/i;
+  var STORE_ID = /^[A-Za-z0-9]{10}\.[A-Za-z0-9_.\-]+$/;
+
+  function classify(a){
+    var n = (a.name || '').replace(/^\s+|\s+$/g, '');
+    var k = null;
+    for (var i = 0; i < KNOWN.length; i++) { if (KNOWN[i].re.test(n)) { k = KNOWN[i]; break; } }
+    if (!k && !STORE_ID.test(a.id || '')) return null;
+    return {
+      id: a.id,
+      name: k ? k.label : n.split(/\s[-–:]|:/)[0].replace(/\s+$/, ''),
+      color: k ? k.color : '#D4AF6A',
+      pack: k && k.pack ? k.pack : null,
+      badge: k && k.badge ? k.badge : null,
+      rank: k ? k.rank : 50,
+      icon: a.iconPath || null,
+      defHide: DEFAULT_HIDE.test(n)
+    };
+  }
+
+  // ---------- State ----------
+  var apps = [], byId = {}, orderIds = [], hiddenSet = {}, tiles = [];
+  var selected = 0, mode = 'browse', menuIdx = 0, panelIdx = 0, panelItems = [];
+  var moveSnapshot = null, movingId = null, launchPending = false, cards = {};
+  var tilt3d = store.get('tilt3d') === true;
+  var auraOn = store.get('aura') !== false;
+  var lastTimer = null;
+
+  function sortDefault(list){
+    return list.slice().sort(function(a, b){ return (a.rank - b.rank) || (a.name < b.name ? -1 : 1); });
+  }
+  function applyDefaults(){
+    hiddenSet = {};
+    apps.forEach(function(a){ if (a.defHide) hiddenSet[a.id] = true; });
+    orderIds = sortDefault(apps).map(function(a){ return a.id; });
+    store.set('hidden', Object.keys(hiddenSet));
+    store.set('order', orderIds);
+  }
+  function initState(){
+    byId = {};
+    apps.forEach(function(a){ byId[a.id] = a; });
+    var sh = store.get('hidden'), so = store.get('order');
+    if (!sh || !so) { applyDefaults(); return; }
+    hiddenSet = {};
+    sh.forEach(function(id){ hiddenSet[id] = true; });
+    var seen = {};
+    orderIds = [];
+    so.forEach(function(id){ if (byId[id] && !seen[id]) { seen[id] = true; orderIds.push(id); } });
+    sortDefault(apps).forEach(function(a){ if (!seen[a.id]) { seen[a.id] = true; orderIds.push(a.id); } });
+  }
+  function visibleIds(){ return orderIds.filter(function(id){ return byId[id] && !hiddenSet[id]; }); }
+  function recompute(){
+    tiles = visibleIds().map(function(id){ return byId[id]; });
+    tiles.push(EDIT_TILE);
+    tiles.push(SETTINGS_TILE);
+  }
+  function save(){
+    store.set('order', orderIds);
+    store.set('hidden', Object.keys(hiddenSet));
+  }
+
+  // ---------- Layout / fit ----------
+  function fit(){
+    var s = Math.min(window.innerWidth/1920, window.innerHeight/1080);
+    $('stage').style.transform = 'scale(' + s + ')';
+  }
+  fit();
+  window.addEventListener('resize', fit);
+
+  function toast(msg){
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ t.classList.remove('show'); }, 2500);
+  }
+  function hint(msg){
+    var h = $('hint');
+    if (msg) { h.textContent = msg; h.classList.add('show'); } else { h.classList.remove('show'); }
+  }
+
+  function tick(){
+    var d = new Date();
+    $('clock').textContent = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+    $('date').textContent = d.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  // ---------- Network helper ----------
+  function getJSON(url, ok, fail){
+    var x = new XMLHttpRequest();
+    x.open('GET', url, true);
+    x.timeout = 15000;
+    x.onload = function(){
+      if (x.status >= 200 && x.status < 300) {
+        var d;
+        try { d = JSON.parse(x.responseText); } catch (e) { fail('bad data'); return; }
+        ok(d);
+      } else { fail('http ' + x.status); }
+    };
+    x.onerror = function(){ fail('network'); };
+    x.ontimeout = function(){ fail('timeout'); };
+    try { x.send(); } catch (e) { fail('send'); }
+  }
+
+  var diag = {scores:{}, weather:'not yet'};
+
+  // ---------- Live scores (ESPN public data) ----------
+  var TEAMS = [
+    {name:'Patriots', abbr:'ne',  path:'football/nfl',    logo:'patriots', short:'NE'},
+    {name:'Celtics',  abbr:'bos', path:'basketball/nba',  logo:'celtics',  short:'BOS'},
+    {name:'Bruins',   abbr:'bos', path:'hockey/nhl',      logo:'bruins',   short:'BOS'},
+    {name:'Red Sox',  abbr:'bos', path:'baseball/mlb',    logo:'redsox',   short:'BOS'}
+  ];
+  var chipEls = [];
+  TEAMS.forEach(function(t, i){
+    var chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML =
+      '<div class="logo">' +
+        '<img src="assets/logos/' + t.logo + '.png" alt="" onload="this.style.display=\'block\';this.nextElementSibling.style.display=\'none\'">' +
+        '<span>' + t.short + '</span>' +
+      '</div>' +
+      '<div class="info">' +
+        '<div class="tname">' + t.name + '<em></em></div>' +
+        '<div class="score"><span class="lo">—</span></div>' +
+        '<div class="status final">Loading</div>' +
+      '</div>' +
+      '<div class="res"></div>';
+    $('feed').appendChild(chip);
+    chipEls[i] = {
+      opp: chip.querySelector('em'), score: chip.querySelector('.score'),
+      status: chip.querySelector('.status'), res: chip.querySelector('.res')
+    };
+  });
+
+  function setChip(i, info){
+    var el = chipEls[i];
+    if (!info) {
+      el.opp.textContent = '';
+      el.score.innerHTML = '<span class="lo">—</span>';
+      el.status.className = 'status final'; el.status.textContent = 'No data';
+      el.res.className = 'res'; el.res.textContent = '';
+      return;
+    }
+    el.opp.textContent = info.opp;
+    var mineHi = info.mine >= info.theirs, theirsHi = info.theirs >= info.mine;
+    el.score.innerHTML = '<span class="' + (mineHi ? 'hi' : 'lo') + '">' + info.mine + '</span><i>–</i>' +
+                         '<span class="' + (theirsHi ? 'hi' : 'lo') + '">' + info.theirs + '</span>';
+    if (info.live) {
+      el.status.className = 'status live';
+      el.status.innerHTML = '<span class="dot"></span>LIVE · ';
+      el.status.appendChild(document.createTextNode(info.note));
+      el.res.className = 'res'; el.res.textContent = '';
+    } else {
+      el.status.className = 'status final'; el.status.textContent = info.note;
+      if (info.mine > info.theirs) { el.res.className = 'res w'; el.res.textContent = 'W'; }
+      else if (info.mine < info.theirs) { el.res.className = 'res l'; el.res.textContent = 'L'; }
+      else { el.res.className = 'res'; el.res.textContent = ''; }
+    }
+  }
+
+  function scoreVal(c){
+    var s = c.score, v = (s && typeof s === 'object') ? (s.displayValue != null ? s.displayValue : s.value) : s;
+    var n = parseInt(v, 10);
+    return isNaN(n) ? null : n;
+  }
+  function dayLabel(iso){
+    var d = new Date(iso), now = new Date();
+    var days = Math.floor((now.getTime() - d.getTime()) / 86400000);
+    if (days >= 0 && days < 6) return d.toLocaleDateString([], {weekday:'short'});
+    return d.toLocaleDateString([], {month:'short', day:'numeric'});
+  }
+  function pick(events){
+    var live = null, last = null;
+    events.forEach(function(e){
+      var c = e.competitions && e.competitions[0];
+      var st = c && c.status && c.status.type && c.status.type.state;
+      if (st === 'in') live = e; else if (st === 'post') last = e;
+    });
+    return live || last;
+  }
+  function toInfo(e, team){
+    var c = e.competitions[0], mine = null, theirs = null;
+    c.competitors.forEach(function(x){
+      if (x.team && String(x.team.abbreviation).toLowerCase() === team.abbr) mine = x; else theirs = x;
+    });
+    if (!mine || !theirs) return null;
+    var m = scoreVal(mine), o = scoreVal(theirs);
+    if (m === null || o === null) return null;
+    var type = c.status.type, live = type.state === 'in';
+    var note = live ? (type.shortDetail || type.detail || 'Live') : ((type.shortDetail || 'Final') + ' · ' + dayLabel(e.date));
+    var oppAbbr = theirs.team && theirs.team.abbreviation ? theirs.team.abbreviation : '';
+    return {live:live, mine:m, theirs:o, note:note, opp:(mine.homeAway === 'home' ? 'vs ' : '@ ') + oppAbbr};
+  }
+  function loadTeam(t, cb){
+    var base = 'https://site.api.espn.com/apis/site/v2/sports/' + t.path + '/teams/' + t.abbr + '/schedule';
+    getJSON(base, function(d){
+      var e = pick(d.events || []);
+      if (e) { cb(null, e); return; }
+      // Off-season: the schedule shows the coming year, so look at the one before.
+      var y = (d.requestedSeason && d.requestedSeason.year) || (new Date()).getFullYear();
+      getJSON(base + '?season=' + (y - 1), function(d2){ cb(null, pick(d2.events || [])); }, function(err){ cb(err); });
+    }, function(err){ cb(err); });
+  }
+  var scoreTimer = null;
+  function refreshScores(){
+    var pending = TEAMS.length, anyLive = false, anyFail = false;
+    TEAMS.forEach(function(t, i){
+      loadTeam(t, function(err, e){
+        if (err) { anyFail = true; diag.scores[t.name] = 'error: ' + err; }
+        else if (!e) { diag.scores[t.name] = 'no games'; setChip(i, null); }
+        else {
+          var info = toInfo(e, t);
+          if (info) { diag.scores[t.name] = (info.live ? 'live ' : 'final ') + info.mine + '-' + info.theirs; if (info.live) anyLive = true; }
+          else diag.scores[t.name] = 'unreadable';
+          setChip(i, info);
+        }
+        pending--;
+        if (pending === 0) {
+          clearTimeout(scoreTimer);
+          scoreTimer = setTimeout(refreshScores, anyFail ? 60000 : (anyLive ? 30000 : 300000));
+        }
+      });
+    });
+  }
+
+  // ---------- Live weather (Open-Meteo) ----------
+  function wmo(code){
+    if (code === 0) return 'Clear';
+    if (code === 1) return 'Mostly Clear';
+    if (code === 2) return 'Partly Cloudy';
+    if (code === 3) return 'Overcast';
+    if (code === 45 || code === 48) return 'Fog';
+    if (code >= 51 && code <= 57) return 'Drizzle';
+    if (code >= 61 && code <= 67) return 'Rain';
+    if (code >= 71 && code <= 77) return 'Snow';
+    if (code >= 80 && code <= 82) return 'Showers';
+    if (code === 85 || code === 86) return 'Snow Showers';
+    if (code >= 95) return 'Thunderstorm';
+    return '';
+  }
+  function refreshWeather(){
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + LAT + '&longitude=' + LON +
+      '&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=America%2FNew_York';
+    getJSON(url, function(d){
+      var c = d.current;
+      if (c && typeof c.temperature_2m === 'number') {
+        $('wtemp').textContent = Math.round(c.temperature_2m) + '°';
+        $('wdesc').textContent = wmo(c.weather_code);
+        diag.weather = 'ok ' + Math.round(c.temperature_2m) + 'F code ' + c.weather_code;
+      } else { diag.weather = 'unreadable'; }
+      setTimeout(refreshWeather, 900000);
+    }, function(err){
+      diag.weather = 'error: ' + err;
+      if ($('wtemp').textContent === '--°') $('wdesc').textContent = 'Unavailable';
+      setTimeout(refreshWeather, 120000);
+    });
+  }
+
+  // ---------- Carousel ----------
+  var translateOnly = false;
+  function xform(d){
+    var a = d < 0 ? -d : d, s = d < 0 ? -1 : 1;
+    if (translateOnly) return 'translateX(' + (s * (a === 0 ? 0 : (a === 1 ? 390 : (a === 2 ? 650 : 820)))) + 'px)';
+    if (tilt3d) {
+      if (a === 0) return 'perspective(1400px) translateX(0px) scale(1)';
+      if (a === 1) return 'perspective(1400px) translateX(' + (s*410) + 'px) rotateY(' + (-s*36) + 'deg) scale(.74)';
+      if (a === 2) return 'perspective(1400px) translateX(' + (s*700) + 'px) rotateY(' + (-s*44) + 'deg) scale(.56)';
+      return 'perspective(1400px) translateX(' + (s*900) + 'px) rotateY(' + (-s*48) + 'deg) scale(.44)';
+    }
+    // Flat mode: 2D only (cheap). Narrower than tall to suggest the lean.
+    if (a === 0) return 'translateX(0px) scale(1)';
+    if (a === 1) return 'translateX(' + (s*390) + 'px) scale(.62,.78)';
+    if (a === 2) return 'translateX(' + (s*650) + 'px) scale(.44,.58)';
+    return 'translateX(' + (s*820) + 'px) scale(.34,.46)';
+  }
+  function place(card, d){
+    var a = d < 0 ? -d : d;
+    if (a > 3) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    card.style.transform = xform(d);
+    card.style.opacity = a === 0 ? 1 : (a === 1 ? 0.7 : (a === 2 ? 0.5 : 0));
+    card.style.zIndex = 10 - a;
+    if (d === 0) card.classList.add('sel'); else card.classList.remove('sel');
+  }
+  function mix(hex, f){      // blend a #rrggbb color toward black by f (0..1)
+    var n = parseInt(hex.slice(1), 16);
+    var r = Math.round(((n >> 16) & 255) * (1 - f)), g = Math.round(((n >> 8) & 255) * (1 - f)), b = Math.round((n & 255) * (1 - f));
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+  function makeCard(app){
+    var c = document.createElement('div');
+    c.className = 'card';
+    var html = '<div class="glow"></div>';
+    if (app.kind === 'settings') {
+      html += '<div class="art edit">' + GEAR + '</div>';
+    } else if (app.edit) {
+      html += '<div class="art edit">Edit apps</div>';
+    } else if (app.pack) {
+      html += '<img class="art" src="assets/icons/' + app.pack + '.png" alt="">';
+      if (app.badge) html += '<div class="badge">' + app.badge + '</div>';
+    } else {
+      html += '<div class="art plain"></div>';
+    }
+    html += '<div class="dim"></div><div class="edge"></div>';
+    c.innerHTML = html;
+    c._dim = c.querySelector('.dim');
+    c.querySelector('.glow').style.setProperty('--glow', app.color);
+    var plain = c.querySelector('.art.plain');
+    if (plain) {
+      plain.style.background = 'linear-gradient(180deg,' + mix(app.color, 0.35) + ',' + mix(app.color, 0.82) + ')';
+      var showLetter = function(){
+        plain.innerHTML = '';
+        var l = document.createElement('div');
+        l.className = 'letter';
+        l.textContent = app.name.charAt(0);
+        plain.appendChild(l);
+      };
+      if (app.icon) {
+        var im = document.createElement('img');
+        im.alt = '';
+        im.onerror = showLetter;
+        im.src = app.icon;
+        plain.appendChild(im);
+      } else { showLetter(); }
+    }
+    return c;
+  }
+  function buildCards(){
+    var keep = {};
+    tiles.forEach(function(app, i){
+      keep[app.id] = true;
+      if (!cards[app.id]) {
+        var c = makeCard(app);
+        c.style.transition = 'none';
+        $('carousel').appendChild(c);
+        place(c, i - selected);
+        cards[app.id] = c;
+        void c.offsetWidth;
+        c.style.transition = '';
+      }
+    });
+    Object.keys(cards).forEach(function(id){
+      if (!keep[id]) { var el = cards[id]; if (el.parentNode) el.parentNode.removeChild(el); delete cards[id]; }
+    });
+  }
+  function layout(){
+    tiles.forEach(function(app, i){ if (cards[app.id]) place(cards[app.id], i - selected); });
+    var cur = tiles[selected];
+    $('label').textContent = cur ? cur.name : '';
+  }
+  function refresh(){
+    recompute();
+    if (selected > tiles.length - 1) selected = tiles.length - 1;
+    if (selected < 0) selected = 0;
+    buildCards(); layout();
+  }
+  function setSelected(n){
+    if (n < 0) n = 0;
+    if (n > tiles.length - 1) n = tiles.length - 1;
+    selected = n;
+    layout();
+    // Storage writes are slow on the TV, so never write while the user is browsing.
+    clearTimeout(lastTimer);
+    if (tiles[n] && !tiles[n].edit) {
+      var id = tiles[n].id;
+      lastTimer = setTimeout(function(){ store.set('last', id); }, 3000);
+    }
+  }
+
+  // ---------- Launch ----------
+  function launch(app){
+    if (!app || app.edit || launchPending) return;
+    if (!(window.tizen && tizen.application)) { toast('Apps open on the TV. This is the browser preview.'); return; }
+    launchPending = true;
+    store.set('last', app.id);
+    setTimeout(function(){ launchPending = false; }, 2000);
+    try {
+      tizen.application.launch(app.id, function(){}, function(err){
+        launchPending = false;
+        toast('Could not open ' + app.name + (err && err.message ? ': ' + err.message : ''));
+      });
+    } catch (e) { launchPending = false; toast('Could not open ' + app.name); }
+  }
+
+  // ---------- Options menu (Move / Hide) ----------
+  var MENU_OPTS = ['Move', 'Hide'];
+  function drawMenu(){
+    var cur = tiles[selected];
+    var h = '<div class="m-title"></div>';
+    MENU_OPTS.forEach(function(o, i){ h += '<div class="m-row' + (i === menuIdx ? ' sel' : '') + '">' + o + '</div>'; });
+    $('menu').innerHTML = h;
+    $('menu').querySelector('.m-title').textContent = cur.name;
+  }
+  function openMenu(){
+    var cur = tiles[selected];
+    if (!cur || cur.edit) return;
+    mode = 'menu'; menuIdx = 0; drawMenu(); $('menu').classList.add('open');
+  }
+  function closeMenu(){ $('menu').classList.remove('open'); mode = 'browse'; }
+  function menuConfirm(){
+    var cur = tiles[selected];
+    var choice = MENU_OPTS[menuIdx];
+    closeMenu();
+    if (choice === 'Hide') {
+      hiddenSet[cur.id] = true; save(); refresh();
+      toast(cur.name + ' hidden. Restore it from Edit apps.');
+    } else {
+      mode = 'move'; movingId = cur.id; moveSnapshot = orderIds.slice();
+      hint('Left / Right to move · OK to place · Back to cancel');
+    }
+  }
+  function moveBy(dir){
+    var vis = visibleIds();
+    var idx = vis.indexOf(movingId), ni = idx + dir;
+    if (idx < 0 || ni < 0 || ni > vis.length - 1) return;
+    var t = vis[idx]; vis[idx] = vis[ni]; vis[ni] = t;
+    var rest = orderIds.filter(function(id){ return hiddenSet[id] || vis.indexOf(id) === -1; });
+    orderIds = vis.concat(rest);
+    recompute(); selected = ni; layout();
+  }
+  function endMove(commit){
+    if (!commit) { orderIds = moveSnapshot; } else { save(); }
+    recompute();
+    selected = Math.max(0, tiles.map(function(t){ return t.id; }).indexOf(movingId));
+    layout();
+    mode = 'browse'; movingId = null; hint('');
+  }
+
+  // ---------- Edit apps panel ----------
+  var panelKind = 'edit', PANEL_WIN = 7;
+  function buildPanelItems(){
+    if (panelKind === 'settings') {
+      return [
+        {id:'__aura__', label:'Aura glow: ' + (auraOn ? 'On' : 'Off')},
+        {id:'__tilt__', label:'Card style: ' + (tilt3d ? '3D tilt' : 'Flat')},
+        {id:'__fps__',  label:'Speed counter: ' + (dbgOn ? 'On' : 'Off')},
+        {id:'__bench__', label:'Run speed test (about 20 seconds)'}
+      ];
+    }
+    var hid = orderIds.filter(function(id){ return hiddenSet[id] && byId[id]; }).map(function(id){ return {id:id, label:'Show  ' + byId[id].name}; });
+    hid.push({id:'__reset__', label:'Reset layout'});
+    return hid;
+  }
+  function drawPanel(){
+    panelItems = buildPanelItems();
+    if (panelIdx > panelItems.length - 1) panelIdx = panelItems.length - 1;
+    var n = panelItems.length;
+    var start = Math.max(0, Math.min(panelIdx - 3, n - PANEL_WIN));
+    var end = Math.min(n, start + PANEL_WIN);
+    var h = '<div class="m-title">' + (panelKind === 'settings' ? 'Settings' : 'Edit apps · hidden apps') + '</div>';
+    if (panelKind === 'edit' && n === 1) h += '<div class="m-note">Nothing is hidden.</div>';
+    for (var i = start; i < end; i++) h += '<div class="m-row' + (i === panelIdx ? ' sel' : '') + '"></div>';
+    h += '<div class="m-note">OK to choose · Back to close' + (n > PANEL_WIN ? ' · ' + (panelIdx + 1) + ' of ' + n : '') + '</div>';
+    $('panel').innerHTML = h;
+    var rows = $('panel').querySelectorAll('.m-row');
+    for (var j = 0; j < rows.length; j++) rows[j].textContent = panelItems[start + j].label;
+  }
+  function openPanel(kind){ panelKind = kind || 'edit'; mode = 'panel'; panelIdx = 0; drawPanel(); $('panel').classList.add('open'); }
+  function closePanel(){ $('panel').classList.remove('open'); mode = 'browse'; }
+  function panelConfirm(){
+    var it = panelItems[panelIdx];
+    if (!it) return;
+    if (it.id === '__reset__') {
+      store.remove('hidden'); store.remove('order'); applyDefaults(); refresh(); closePanel(); toast('Layout reset');
+    } else if (it.id === '__aura__') {
+      auraOn = !auraOn; store.set('aura', auraOn); $('carousel').classList.toggle('noglow', !auraOn); drawPanel();
+    } else if (it.id === '__tilt__') {
+      tilt3d = !tilt3d; store.set('tilt3d', tilt3d); layout(); drawPanel();
+    } else if (it.id === '__fps__') {
+      toggleDbg(); drawPanel();
+    } else if (it.id === '__bench__') {
+      closePanel(); runBench();
+    } else {
+      delete hiddenSet[it.id]; save(); refresh(); drawPanel();
+    }
+  }
+
+  // ---------- Diagnostics (press 1) ----------
+  var dbgOn = false, frames = 0, fps = 0, lastT = 0;
+  function dbgText(){
+    var l = [VERSION + '   fps ' + fps + '   tilt ' + (tilt3d ? '3D' : 'flat') + '   (Settings tile)'];
+    TEAMS.forEach(function(t){ l.push(t.name + ': ' + (diag.scores[t.name] || 'waiting')); });
+    l.push('Weather: ' + diag.weather);
+    l.push('Apps: ' + apps.length + ' found, ' + (tiles.length - 1) + ' shown');
+    return l.join('\n');
+  }
+  function dbgLoop(now){
+    if (!dbgOn) return;
+    frames++;
+    if (now - lastT >= 1000) { fps = Math.round(frames * 1000 / (now - lastT)); frames = 0; lastT = now; $('dbg').textContent = dbgText(); }
+    requestAnimationFrame(dbgLoop);
+  }
+  function toggleDbg(){
+    dbgOn = !dbgOn;
+    $('dbg').classList.toggle('show', dbgOn);
+    if (dbgOn) { frames = 0; lastT = 0; $('dbg').textContent = dbgText(); requestAnimationFrame(function(n){ lastT = n; dbgLoop(n); }); }
+  }
+
+  // ---------- Speed test: measures what makes the carousel slow on this TV ----------
+  var benchRunning = false, benchSaved = 0;
+  var BENCH_CLASSES = ['b-ns', 'b-nd', 'b-lay', 'b-nobg', 'b-notop', 'b-inst'];
+  function benchAdd(){ for (var i = 0; i < arguments.length; i++) $('stage').classList.add(arguments[i]); }
+  function benchReset(){ BENCH_CLASSES.forEach(function(c){ $('stage').classList.remove(c); }); translateOnly = false; }
+  var BENCH = [
+    {n:'New look (wallpaper)',  on:function(){}},
+    {n:'New look, no wallpaper',on:function(){ benchAdd('b-nobg'); }},
+    {n:'New look, slide only',  on:function(){ translateOnly = true; }},
+    {n:'New look, no ticker',   on:function(){ benchAdd('b-notop'); }}
+  ];
+  function pad(t, n){ t = String(t); while (t.length < n) t += ' '; return t; }
+  function runBench(){
+    benchRunning = true; mode = 'bench'; benchSaved = selected;
+    var out = [], idx = 0;
+    var el = $('bench');
+    el.classList.add('show');
+    el.textContent = 'Speed test running. Do not press anything.\nTest 1 of ' + BENCH.length;
+    function finish(){
+      benchRunning = false; benchReset(); selected = benchSaved; layout();
+      var head = 'SPEED TEST (Back to close)\n' +
+        'screen ' + window.innerWidth + 'x' + window.innerHeight + ' @' + (window.devicePixelRatio || 1) + 'x   ' + VERSION + '\n' +
+        (navigator.userAgent || '').replace(/^Mozilla\/5.0 /, '') + '\n\n';
+      el.textContent = head + out.join('\n');
+    }
+    function next(){
+      if (!benchRunning) return;
+      if (idx >= BENCH.length) { finish(); return; }
+      var c = BENCH[idx++];
+      el.textContent = 'Speed test running. Do not press anything.\nTest ' + idx + ' of ' + BENCH.length + ': ' + c.n;
+      benchReset(); c.on();
+      selected = Math.min(3, tiles.length - 1); layout();
+      setTimeout(function(){
+        var steps = 8, step = 0, dir = 1, frames = 0, worst = 0, last = 0, t0 = 0, stopAt = 0;
+        var timer = setInterval(function(){
+          if (!benchRunning) { clearInterval(timer); return; }
+          if (step >= steps) { clearInterval(timer); return; }
+          selected = Math.max(0, Math.min(tiles.length - 1, selected + dir)); dir = -dir; layout(); step++;
+        }, 350);
+        function loop(now){
+          if (!benchRunning) return;
+          if (!t0) { t0 = now; stopAt = now + steps * 350 + 500; }
+          if (last) { var dt = now - last; frames++; if (dt > worst) worst = dt; }
+          last = now;
+          if (now < stopAt) { requestAnimationFrame(loop); }
+          else {
+            var fps = frames / ((now - t0) / 1000);
+            out.push(pad(c.n, 28) + fps.toFixed(1) + ' fps    worst frame ' + Math.round(worst) + ' ms');
+            setTimeout(next, 200);
+          }
+        }
+        requestAnimationFrame(loop);
+      }, 500);
+    }
+    next();
+  }
+
+  // ---------- Remote control ----------
+  var enterDown = false, holdFired = false, holdTimer = null, safetyTimer = null;
+
+  function onEnter(){
+    if (mode === 'browse') {
+      var cur = tiles[selected];
+      if (!cur) return;
+      if (cur.kind === 'settings') openPanel('settings'); else if (cur.edit) openPanel('edit'); else launch(cur);
+    } else if (mode === 'menu') { menuConfirm(); }
+    else if (mode === 'move') { endMove(true); }
+    else if (mode === 'panel') { panelConfirm(); }
+  }
+  function onHold(){
+    if (mode === 'browse') { var cur = tiles[selected]; if (cur && !cur.edit) { holdFired = true; openMenu(); } }
+  }
+  function onArrow(k){
+    if (mode === 'browse') {
+      if (k === 37) setSelected(selected - 1);
+      else if (k === 39) setSelected(selected + 1);
+      else if (k === 38) openMenu();
+    } else if (mode === 'move') {
+      if (k === 37) moveBy(-1); else if (k === 39) moveBy(1);
+    } else if (mode === 'menu') {
+      if (k === 38 || k === 40) { menuIdx = (menuIdx + 1) % MENU_OPTS.length; drawMenu(); }
+    } else if (mode === 'panel') {
+      if (k === 38 && panelIdx > 0) { panelIdx--; drawPanel(); }
+      else if (k === 40 && panelIdx < panelItems.length - 1) { panelIdx++; drawPanel(); }
+    }
+  }
+  function onBack(){
+    if (mode === 'bench') { benchRunning = false; benchReset(); $('bench').classList.remove('show'); mode = 'browse'; layout(); }
+    else if (mode === 'menu') closeMenu();
+    else if (mode === 'move') endMove(false);
+    else if (mode === 'panel') closePanel();
+  }
+
+  document.addEventListener('keydown', function(e){
+    var k = e.keyCode;
+    if ([37, 38, 39, 40, 13, 10009, 27, 8].indexOf(k) !== -1) e.preventDefault();
+    if (k === 13) {
+      if (!enterDown) {
+        enterDown = true; holdFired = false;
+        clearTimeout(holdTimer); holdTimer = setTimeout(function(){ if (enterDown) onHold(); }, HOLD_MS);
+        clearTimeout(safetyTimer); safetyTimer = setTimeout(function(){ enterDown = false; }, 4000);
+      }
+    } else if (k === 37 || k === 38 || k === 39 || k === 40) { onArrow(k); }
+    else if (k === 10009 || k === 27 || k === 8) { onBack(); }
+    else if (k === 49) { toggleDbg(); }
+    else if (k === 50) { tilt3d = !tilt3d; store.set('tilt3d', tilt3d); layout(); toast('Tilt: ' + (tilt3d ? '3D' : 'flat')); }
+  });
+  document.addEventListener('keyup', function(e){
+    if (e.keyCode !== 13) return;
+    e.preventDefault();
+    if (!enterDown) return;
+    clearTimeout(holdTimer); clearTimeout(safetyTimer);
+    enterDown = false;
+    if (!holdFired) onEnter();
+    holdFired = false;
+  });
+
+  // ---------- Discover apps from the TV ----------
+  var DEMO_NAMES = ['YouTube','Netflix','Prime Video','Disney+','Paramount+','Hulu','Peacock','Twitch','FOX One','Tubi','YouTube TV','Browser','Instagram','Xbox','Glance'];
+  function loadInstalled(cb){
+    if (window.tizen && tizen.application && tizen.application.getAppsInfo) {
+      tizen.application.getAppsInfo(function(list){
+        var out = [], seen = {};
+        list.forEach(function(a){
+          if (!a || !a.id || a.id === SELF_ID || a.show === false || seen[a.id]) return;
+          var e = classify(a);
+          if (e) { seen[a.id] = true; out.push(e); }
+        });
+        cb(out);
+      }, function(){ cb([]); });
+    } else {
+      cb(DEMO_NAMES.map(function(n, i){ return classify({id:'demo' + i + 'abcdefgh.' + i, name:n}); }));
+    }
+  }
+  loadInstalled(function(list){
+    apps = list;
+    initState();
+    recompute();
+    var last = store.get('last'), idx = 0;
+    tiles.forEach(function(t, i){ if (t.id === last) idx = i; });
+    selected = idx;
+    buildCards();
+    layout();
+  });
+  $('carousel').classList.toggle('noglow', !auraOn);
+  refreshScores();
+  refreshWeather();
+
+  // ---------- Startup ----------
+  // Black, then the splash (fully decoded) fades in. While it is fully covering the
+  // screen, the home screen is drawn underneath. Only the splash animates out.
+  function decoded(src){
+    return new Promise(function(resolve){
+      var img = new Image();
+      img.onload = function(){ if (img.decode) { img.decode().then(resolve, resolve); } else { resolve(); } };
+      img.onerror = resolve;
+      img.src = src;
+    });
+  }
+  var started = false;
+  function startup(){
+    if (started) return; started = true;
+    var sp = $('splash');
+    sp.style.transition = 'opacity .5s ease';
+    sp.classList.add('on');
+    setTimeout(function(){ $('stage').classList.add('warm'); }, 700);
+    setTimeout(function(){
+      sp.style.transition = 'opacity 1.2s ease';
+      sp.classList.remove('on');
+    }, 700 + SPLASH_HOLD_MS);
+  }
+  Promise.all([decoded('assets/splash/boot.jpg'), decoded('assets/bg/background.jpg')]).then(startup);
+  setTimeout(startup, 6000);
+})();
+</script>
+</body>
+</html>
